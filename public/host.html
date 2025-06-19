@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Host - Bingo 75</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+
+    <style>
+        #calledNumbers span {
+            display: inline-block;
+            margin: 3px 5px;
+            padding: 3px 8px;
+            background: #dc3545;
+            color: white;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        #winnerAnnouncement {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: 700;
+            color: #198754;
+        }
+
+        #spinBar {
+            font-size: 48px;
+            font-weight: 900;
+            color: #dc3545;
+            text-align: center;
+            height: 60px;
+            margin-bottom: 20px;
+            letter-spacing: 10px;
+            user-select: none;
+        }
+
+        /* Ẩn popup mặc định */
+        .popup-hidden {
+            display: none !important;
+        }
+
+        /* Popup nền mờ full màn hình */
+        #spinPopup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        /* Hộp chứa số quay */
+        .popup-content {
+            background: white;
+            border-radius: 12px;
+            padding: 40px 60px;
+            text-align: center;
+            font-size: 8rem;
+            font-weight: bold;
+            color: #e63946;
+            box-shadow: 0 0 20px #e63946;
+            user-select: none;
+            animation: pulse 1.5s infinite;
+        }
+
+        /* Hiệu ứng nhấp nháy nhẹ */
+        @keyframes pulse {
+
+            0%,
+            100% {
+                text-shadow: 0 0 10px #e63946;
+            }
+
+            50% {
+                text-shadow: 0 0 30px #f1faee;
+            }
+        }
+
+        /* Số quay */
+        .spin-number {
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
+
+        .winner-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.1);
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .winner-content {
+            text-align: center;
+            animation: zoomIn 0.6s ease-out;
+        }
+
+        .winner-name {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            color: #e4dddd;
+            text-shadow: 0 0 10px #FFD700, 0 0 20px #ffbb00, 0 0 30px #ffd900;
+            animation: glowText 1.5s ease-in-out infinite;
+        }
+
+        @keyframes glowText {
+
+            0%,
+            100% {
+                color: #adad96;
+                text-shadow: 0 0 10px #ffbb00;
+            }
+
+            50% {
+                color: #af9e00;
+                text-shadow: 0 0 20px #ffd900
+            }
+        }
+
+        @keyframes zoomIn {
+            from {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body class="container py-4">
+    <h3>🎛️ Trang Quay Số Bingo Game</h3>
+    <input type="text" id="hostSessionId" class="form-control mb-2" placeholder="Mã phòng (ví dụ: abc)">
+    <button class="btn btn-primary mb-4" id="hostJoinBtn">Kết nối</button>
+
+    <div id="hostArea" style="display:none;">
+        <div id="qrBox" class="mt-3" style="display:none;">
+            <p>🔗 Người chơi quét mã để tham gia:</p>
+            <canvas id="qrCanvas"></canvas>
+            <p id="qrLink" class="mt-2 text-primary text-break"></p>
+        </div>
+        <h5>Người chơi:</h5>
+        <ul id="playerList" class="list-group mb-3"></ul>
+
+        <button class="btn btn-success" id="hostSpinBtn">🎰 Quay số</button>
+
+        <h5 class="mt-4">Số đã gọi:</h5>
+        <div id="hostCalled" class="d-flex flex-wrap gap-2"></div>
+        <div id="hostWinnerBox" class="alert alert-success mt-3 d-none"></div>
+    </div>
+    <!-- Popup quay số -->
+    <div id="spinPopup" class="popup-hidden">
+        <div class="popup-content">
+            <div id="spinBarNumber" class="spin-number">00</div>
+        </div>
+    </div>
+
+    <div id="winnerModal" class="winner-modal hidden">
+        <div class="winner-content">
+            <div class="winner-name">Chúc Mừng<br>🎉 <strong>Nguyễn Văn A</strong>🎉 </div>
+        </div>
+    </div>
+    <canvas id="fireworksCanvas"
+        style="position: fixed; top: 0; left: 0; pointer-events: none; width: 100%; height: 100%; z-index: 9999;"></canvas>
+    <audio id="winSound" src="sounds/firework-audio.mp3" style="display: none;"></audio><!-- Canvas pháo hoa thật -->
+    <canvas id="realFireworks"
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;"></canvas>
+    <script>
+        let numbersPool = [];
+        let calledNumbers = [];
+        let rollingInterval;
+        let rollingTimeoutInterval;
+        const socket = io();
+        let sessionId = '';
+        const spinPopup = document.getElementById('spinPopup');
+        const spinBarNumber = document.getElementById('spinBarNumber');
+        spinPopup.classList.add('popup-hidden');
+        // Tạo AudioContext duy nhất, dùng cho toàn bộ lần play âm thanh
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const sound = document.getElementById("winSound");
+
+        // Shuffle array (Fisher-Yates)
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                let j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+        }
+        document.getElementById('hostJoinBtn').onclick = () => {
+            sessionId = document.getElementById('hostSessionId').value.trim() || 'default';
+            socket.emit('joinSession', { sessionId, playerName: '[HOST]' });
+            document.getElementById('hostArea').style.display = 'block';
+            // 👉 Tạo link client
+            const joinUrl = `${window.location.origin}/index.html?session=${encodeURIComponent(sessionId)}`;
+            document.getElementById('qrLink').textContent = joinUrl;
+            document.getElementById('qrBox').style.display = 'block';
+            // 👉 Vẽ mã QR
+            const qr = new QRious({
+                element: document.getElementById('qrCanvas'),
+                value: joinUrl,
+                size: 200
+            });
+            // Reset
+            calledNumbers = [];
+            numbersPool = [];
+            for (let i = 1; i <= 75; i++) numbersPool.push(i);
+            shuffleArray(numbersPool);
+        };
+        async function playTickSound() {
+            if (audioCtx.state === 'suspended') {
+                // Resume nếu AudioContext đang bị tạm dừng
+                try {
+                    await audioCtx.resume();
+                } catch (e) {
+                    console.warn("Không thể resume AudioContext:", e);
+                    return;
+                }
+            }
+
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.type = 'square';
+            o.frequency.value = 800;
+            o.connect(g);
+            g.connect(audioCtx.destination);
+
+            o.start();
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.1);
+            o.stop(audioCtx.currentTime + 0.1);
+        }
+        document.getElementById('hostSpinBtn').onclick = () => {
+            if (!sessionId) return;
+
+            let interval = 50;   // tần suất nhảy số
+            spinPopup.classList.remove('popup-hidden'); // Hiện popup
+
+            // Hiệu ứng số nhảy ngẫu nhiên trước khi server trả về số thật
+            rollingInterval = setInterval(() => {
+                const rndNum = Math.floor(Math.random() * 75) + 1;
+                spinBarNumber.textContent = rndNum.toString().padStart(2, '0');
+                playTickSound();
+            }, interval);
+            rollingTimeoutInterval = setTimeout(() => {
+                spinPopup.classList.add('popup-hidden');
+                clearInterval(rollingInterval);
+            }, 30000);
+
+            // Gửi yêu cầu quay số tới server
+            socket.emit('startSpin', sessionId);
+        };
+
+        socket.on('playerListUpdate', (names) => {
+            const ul = document.getElementById('playerList');
+            ul.innerHTML = '';
+            names.forEach(name => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item';
+                li.textContent = name;
+                ul.appendChild(li);
+            });
+        });
+
+        socket.on('numberCalled', num => {
+            clearInterval(rollingInterval);
+            clearInterval(rollingTimeoutInterval);
+
+            // Hiển thị số trong danh sách đã quay
+            const span = document.createElement('span');
+            span.className = 'badge bg-danger';
+            span.textContent = num;
+            document.getElementById('hostCalled').appendChild(span);
+            const index = numbersPool.indexOf(num);
+            const number = numbersPool.splice(index, 1)[0];
+            spinBarNumber.textContent = number.toString().padStart(2, '0');
+
+            // Đóng popup sau 1.5 giây để người dùng nhìn thấy số
+            setTimeout(() => {
+                spinPopup.classList.add('popup-hidden');
+            }, 1000);
+        });
+
+        socket.on('winnerAnnounced', ({ players }) => {
+            const box = document.getElementById('hostWinnerBox');
+            box.classList.remove('d-none');
+            let name = "";
+
+            players.forEach(({ player, bingoCells }) => {
+                name = `${player.name} `;
+            });
+            box.innerHTML = `🎉 Người thắng: <strong>${name}</strong>`;
+
+            // Phát nhạc chiến thắng
+            if (sound) {
+                sound.currentTime = 0;
+                sound.play().catch(e => console.warn("Autoplay blocked:", e));
+            }
+            // Hiển thị tên người chiến thắng
+            showWinnerName(name);
+            // Bắn pháo hoa
+            launchFireworksWithTwinkle();
+        });
+
+        function showWinnerName(name) {
+            const modal = document.getElementById("winnerModal");
+            modal.querySelector(".winner-name strong").textContent = name;
+            modal.classList.remove("hidden");
+        }
+        function launchFireworksWithTwinkle() {
+            const canvas = document.getElementById("realFireworks");
+            const ctx = canvas.getContext("2d");
+
+            // Thiết lập kích thước canvas một lần duy nhất
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            resize();
+            window.addEventListener("resize", resize);
+
+            const colors = ['#fff', '#ffd700', '#00e5ff', '#ff4081', '#f8f8f8', '#39ff14', '#ff6f61', '#7b68ee'];
+
+            const rockets = [];
+            const particles = [];
+            const MAX_ROCKETS = 6;
+            const MAX_PARTICLES = 150;
+
+            // Tạo rocket mới (tia bắn lên)
+            function createRocket() {
+                if (rockets.length >= MAX_ROCKETS) return;
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                rockets.push({
+                    x: Math.random() * canvas.width * 0.8 + canvas.width * 0.1,
+                    y: canvas.height,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: -(Math.random() * 7 + 13), // tốc độ bắn lên nhanh
+                    alpha: 1,
+                    radius: 3,
+                    color,
+                    exploded: false,
+                    trail: [],
+                    maxTrailLength: 10
+                });
+            }
+
+            // Tạo explosion nhiều hạt nhiều màu sắc
+            function createExplosion(x, y) {
+                const count = 40;
+                if (particles.length + count > MAX_PARTICLES) return;
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * 2 * Math.PI;
+                    const speed = Math.random() * 4 + 2;
+                    const radius = Math.random() * 1.5 + 0.2;
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    particles.push({
+                        x,
+                        y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        alpha: 1,
+                        radius,
+                        color,
+                        gravity: 0.15,
+                        trail: [],
+                        maxTrailLength: 12,
+                        twinklePhase: Math.random() * Math.PI * 3
+                    });
+                }
+            }
+
+            function updateRockets() {
+                for (let i = rockets.length - 1; i >= 0; i--) {
+                    const r = rockets[i];
+
+                    r.x += r.vx;
+                    r.y += r.vy;
+                    r.vy += 0.1; // trọng lực nhỏ kéo chậm rocket
+
+                    // Lưu vệt trail
+                    r.trail.push({ x: r.x, y: r.y });
+                    if (r.trail.length > r.maxTrailLength) r.trail.shift();
+
+                    // Nổ khi đạt đỉnh hoặc lên cao đủ
+                    if (!r.exploded && (r.vy >= 0 || r.y < canvas.height / 3)) {
+                        r.exploded = true;
+                        createExplosion(r.x, r.y);
+                        rockets.splice(i, 1);
+                        continue;
+                    }
+
+                    r.alpha -= 0.01;
+                    if (r.alpha <= 0) rockets.splice(i, 1);
+                }
+            }
+
+            function updateParticles() {
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += p.gravity;
+
+                    p.trail.push({ x: p.x, y: p.y });
+                    if (p.trail.length > p.maxTrailLength) p.trail.shift();
+
+                    p.alpha -= 0.015;
+                    p.twinklePhase += 0.1;
+
+                    if (p.alpha <= 0) particles.splice(i, 1);
+                }
+            }
+
+            function drawTrails(points, color, alpha, lineWidth, shadowBlur) {
+                if (points.length < 2) return;
+                ctx.save();
+                ctx.lineWidth = lineWidth;
+                ctx.strokeStyle = color;
+                ctx.shadowColor = color;
+                ctx.shadowBlur = shadowBlur;
+                ctx.globalAlpha = alpha;
+                ctx.beginPath();
+                for (let i = 0; i < points.length - 1; i++) {
+                    ctx.moveTo(points[i].x, points[i].y);
+                    ctx.lineTo(points[i + 1].x, points[i + 1].y);
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            function draw() {
+                // Clear canvas với alpha nhỏ tạo đuôi mờ dần
+                ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Vẽ rocket
+                rockets.forEach(r => {
+                    drawTrails(r.trail, r.color, r.alpha * 0.7, r.radius * 2, 12);
+
+                    ctx.save();
+                    ctx.globalAlpha = r.alpha;
+                    ctx.beginPath();
+                    ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = r.color;
+                    ctx.shadowColor = r.color;
+                    ctx.shadowBlur = 20;
+                    ctx.fill();
+                    ctx.restore();
+                });
+
+                // Vẽ particles explosion
+                particles.forEach(p => {
+                    const twinkleAlpha = 0.5 + 0.5 * Math.sin(p.twinklePhase);
+
+                    drawTrails(p.trail, p.color, p.alpha * twinkleAlpha * 0.8, p.radius * 2, 18);
+
+                    ctx.save();
+                    ctx.globalAlpha = p.alpha * twinkleAlpha;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = p.color;
+                    ctx.shadowColor = p.color;
+                    ctx.shadowBlur = 25;
+                    ctx.fill();
+                    ctx.restore();
+
+                    // Chấm nhỏ lấp lánh ngẫu nhiên
+                    if (Math.random() < 0.3 && p.trail.length) {
+                        const glitterPos = p.trail[Math.floor(Math.random() * p.trail.length)];
+                        ctx.save();
+                        ctx.globalAlpha = p.alpha * (0.3 + 0.7 * Math.random());
+                        ctx.fillStyle = p.color;
+                        ctx.shadowColor = p.color;
+                        ctx.shadowBlur = 15;
+                        ctx.beginPath();
+                        ctx.arc(glitterPos.x, glitterPos.y, p.radius / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                });
+            }
+
+            function animate() {
+                updateRockets();
+                updateParticles();
+                draw();
+                requestAnimationFrame(animate);
+            }
+
+            function triggerFireworks() {
+                canvas.style.display = 'block';
+                const interval = setInterval(() => {
+                    createRocket();
+                }, 600);
+
+                setTimeout(() => {
+                    clearInterval(interval);
+                    canvas.style.display = 'none';
+                    const modal = document.getElementById("winnerModal");
+                    modal.classList.add("hidden");
+
+                    if (sound) {
+                        sound.pause();
+                        sound.currentTime = 0;
+                    }
+                }, 20000);
+            }
+
+            animate();
+            triggerFireworks();
+        }
+    </script>
+</body>
+
+</html>

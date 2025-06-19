@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Người chơi - Bingo 75</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script defer src="game.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        body {
+            background: rgba(0, 0, 0, 0.1);
+            background-image: url("./images/black-thread-light.png");
+            background-repeat: repeat;
+        }
+
+        h1 {
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
+
+        #cardContainer {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .winner-popup {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .winner-number {
+            animation: bling-glow 1.5s ease-in-out infinite;
+            font-weight: 900;
+            font-size: 6rem;
+            font-family: 'DS-Digital', monospace;
+            user-select: none;
+            color: #1b5500;
+        }
+
+        .winner-name {
+            margin-top: 10px;
+            font-size: 2rem;
+            color: #2276e4;
+            text-shadow: 0 0 10px #2276e4, 0 0 20px #1b5500;
+            animation: bling-name-glow 2s ease-in-out infinite;
+        }
+
+        @keyframes bling-name-glow {
+
+            0%,
+            100% {
+                text-shadow: 0 0 10px #2276e4, 0 0 20px #1b5500;
+                color: #2276e4;
+            }
+
+            50% {
+                text-shadow: 0 0 20px #2276e4, 0 0 30px #1b5500;
+                color: #b4ff3b;
+            }
+        }
+
+        .card-bingo {
+            position: relative;
+            width: 280px;
+            padding: 1.5rem;
+            margin: 1rem auto;
+            background-color: #006673;
+            background-image: url("./images/brushed-alum-dark.png");
+            /* This is mostly intended for prototyping; please download the pattern and re-host for production environments. Thank you! */
+            /* Sần */
+            background-size: cover;
+            border: 2px dashed #d4af37;
+            border-radius: 12px;
+            /* chân có thể răng cưa */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+            font-family: 'Courier New', Courier, monospace;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        /* Hiệu ứng lỗ vé */
+        .card-bingo::before,
+        .card-bingo::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #e8e9e9;
+            background-image: url("./images/black-thread-light.png");
+            background-repeat: repeat;
+            border-radius: 50%;
+            z-index: 1;
+        }
+
+        .card-bingo::before {
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .card-bingo::after {
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Hiệu ứng răng cưa bên trái phải */
+        .card-bingo .cut {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #f5f7f7;
+            background-image: url("./images/black-thread-light.png");
+            background-repeat: repeat;
+            border-radius: 50%;
+            left: -6px;
+        }
+
+        .card-bingo .cut:nth-child(1) {
+            top: 20px;
+        }
+
+        .card-bingo .cut:nth-child(2) {
+            top: 60px;
+        }
+
+        .card-bingo .cut:nth-child(3) {
+            top: 100px;
+        }
+
+        .card-bingo .cut-r {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #f8f9fa;
+            background-image: url("./images/black-thread-light.png");
+            background-repeat: repeat;
+            border-radius: 50%;
+            right: -6px;
+        }
+
+        .card-bingo .cut-r:nth-child(4) {
+            top: 20px;
+        }
+
+        .card-bingo .cut-r:nth-child(5) {
+            top: 60px;
+        }
+
+        .card-bingo .cut-r:nth-child(6) {
+            top: 100px;
+        }
+
+        .card-bingo h5 {
+            color: #dc3545;
+            background-image: url("./images/brushed-alum-dark.png");
+            background-size: cover;
+            font-weight: 700;
+            padding: 3px 3px;
+            color: white !important;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            table-layout: fixed;
+            user-select: none;
+        }
+
+        th,
+        td {
+            border: 1px solid #5f5f5f;
+            text-align: center;
+            padding: 5px 5px;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        th {
+            background-color: #dc3545;
+            background-image: url("./images/brushed-alum-dark.png");
+            background-size: cover;
+            color: white;
+        }
+
+        td.marked {
+            background-color: #ff6f91;
+            background-image: url("./images/brushed-alum-dark.png");
+            background-size: cover;
+            color: white;
+            padding: 3px 3px;
+            font-weight: 700;
+            transition: background-color 0.3s ease;
+        }
+
+        td.free {
+            background-color: #ffc8dd;
+            background-image: url("./images/brushed-alum-dark.png");
+            background-size: cover;
+            color: #dc3545;
+            font-weight: 700;
+            font-size: 16px !important;
+        }
+
+        td.bingo {
+            background-color: #198754 !important;
+            background-image: url("./images/brushed-alum-dark.png");
+            background-size: cover;
+            color: white !important;
+        }
+
+        #calledNumbers span {
+            display: inline-block;
+            margin: 3px 5px;
+            padding: 3px 8px;
+            background: #dc3545;
+            color: white;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        #winnerAnnouncement {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: 700;
+            color: #198754;
+        }
+
+        #spinBar {
+            font-size: 48px;
+            font-weight: 900;
+            color: #dc3545;
+            text-align: center;
+            height: 60px;
+            margin-bottom: 20px;
+            letter-spacing: 10px;
+            user-select: none;
+        }
+
+        /* Ẩn popup mặc định */
+        .popup-hidden {
+            display: none !important;
+        }
+
+        /* Popup nền mờ full màn hình */
+        #spinPopup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        /* Hộp chứa số quay */
+        .popup-content {
+            background: white;
+            border-radius: 12px;
+            padding: 40px 60px;
+            text-align: center;
+            font-size: 8rem;
+            font-weight: bold;
+            color: #e63946;
+            box-shadow: 0 0 20px #e63946;
+            user-select: none;
+            animation: pulse 1.5s infinite;
+        }
+
+        /* Hiệu ứng nhấp nháy nhẹ */
+        @keyframes pulse {
+
+            0%,
+            100% {
+                text-shadow: 0 0 10px #e63946;
+            }
+
+            50% {
+                text-shadow: 0 0 30px #f1faee;
+            }
+        }
+
+        /* Số quay */
+        .spin-number {
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
+
+        .winner-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.1);
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .winner-content {
+            text-align: center;
+            animation: zoomIn 0.6s ease-out;
+        }
+
+        .winner-name {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            color: #e4dddd;
+            text-shadow: 0 0 10px #FFD700, 0 0 20px #ffbb00, 0 0 30px #ffd900;
+            animation: glowText 1.5s ease-in-out infinite;
+        }
+
+        @keyframes glowText {
+
+            0%,
+            100% {
+                color: #adad96;
+                text-shadow: 0 0 10px #ffbb00;
+            }
+
+            50% {
+                color: #af9e00;
+                text-shadow: 0 0 20px #ffd900
+            }
+        }
+
+        @keyframes zoomIn {
+            from {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body class="container py-4">
+    <h2>🎛️ Bingo Game</h2>
+    <div id="joinArea">
+        <h3>Tham gia trò chơi</h3>
+        <input type="text" id="playerName" class="form-control mb-2" placeholder="Tên của bạn" />
+        <input type="text" id="sessionId" class="form-control mb-2" placeholder="Mã phòng (ví dụ: abc)" />
+        <button id="joinBtn" class="btn btn-primary">Vào phòng</button>
+    </div>
+
+    <div id="gameArea" style="display:none;">
+        <h4 id="playerLabel"></h4>
+        <div id="cardContainer" class="my-3"></div>
+        <h5>Số đã gọi:</h5>
+        <div id="calledNumbers" class="d-flex flex-wrap gap-2"></div>
+        <div id="winnerBox" class="alert alert-success mt-3 d-none"></div>
+    </div>
+    <div id="winnerModal" class="winner-modal hidden">
+        <div class="winner-content">
+            <div class="winner-name">🎉 <strong>BINGO</strong>🎉 </div>
+        </div>
+    </div>
+    <canvas id="fireworksCanvas"
+        style="position: fixed; top: 0; left: 0; pointer-events: none; width: 100%; height: 100%; z-index: 9999;"></canvas>
+    <audio id="winSound" src="sounds/firework-audio.mp3" style="display: none;"></audio><!-- Canvas pháo hoa thật -->
+    <canvas id="realFireworks"
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;"></canvas>
+</body>
+
+</html>

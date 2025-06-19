@@ -223,7 +223,7 @@
             socket.emit('joinSession', { sessionId, playerName: '[HOST]' });
             document.getElementById('hostArea').style.display = 'block';
             // 👉 Tạo link client
-            const joinUrl = `${window.location.origin}/index.html?session=${encodeURIComponent(sessionId)}`;
+            const joinUrl = `${window.location.origin}/player.html?session=${encodeURIComponent(sessionId)}`;
             document.getElementById('qrLink').textContent = joinUrl;
             document.getElementById('qrBox').style.display = 'block';
             // 👉 Vẽ mã QR
